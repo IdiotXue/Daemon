@@ -2,7 +2,7 @@
 #include <unistd.h> //fork,getpid,getdtablesize
 #include <signal.h> //sigaction
 #include <sys/stat.h> //umask
-#include <fcntl.h>    //open
+#include <fcntl.h> //open
 
 #include <iostream>
 using namespace std;
