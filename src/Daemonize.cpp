@@ -1,18 +1,20 @@
 #include "Daemonize.h"
-#include <unistd.h> //fork,getpid,getdtablesize
-#include <signal.h> //sigaction
+#include <signal.h>   //sigaction
 #include <sys/stat.h> //umask
-#include <fcntl.h> //open
-
-#include <iostream>
+#include <fcntl.h>    //open
+#include <string.h>   //strerror
+#include <unistd.h>   //fork,getpid,getdtablesize,getpid,pid_t
+#include <iostream>   //TODO:cout和cerr应改为记录入日志文件
 using namespace std;
 
-bool Daemonize::Init(bool unique, const char *workDir, bool noclose)
+long Daemonize::m_lPid = 0; //守护进程id不可能是0，因此用来表示还未成为守护进程
+
+bool Daemonize::Init(const char *lockFile, const char *workDir, bool unique, bool noclose)
 {
     pid_t pid = fork(); //创建子进程，与父进程共享相同的文件表项
     if (pid < 0)        //创建失败
     {
-        cout << "first fork() in Daemonize::Init() failed" << endl;
+        cerr << "first fork() in Daemonize::Init() failed" << endl;
         return false;
     }
     else if (pid > 0) //父进程退出，使子进程在后台运行
@@ -25,7 +27,7 @@ bool Daemonize::Init(bool unique, const char *workDir, bool noclose)
        且子进程现在运行于后台进程组，相当于在终端运行shell & */
     if (setsid() < 0) //该子进程 1.成为会话组长(首进程),2.成为新进程组的组长进程,3.脱离控制终端
     {
-        cout << "setsid() in Daemonize::init() failed" << endl;
+        cerr << "setsid() in Daemonize::init() failed" << endl;
         return false;
     }
 
@@ -37,7 +39,7 @@ bool Daemonize::Init(bool unique, const char *workDir, bool noclose)
     act.sa_flags = 0;
     if (sigaction(SIGHUP, &act, NULL) < 0)
     {
-        cout << "sigaction() in Daemonize::init() failed " << endl;
+        cerr << "sigaction() in Daemonize::init() failed " << endl;
         return false;
     }
 
@@ -46,7 +48,7 @@ bool Daemonize::Init(bool unique, const char *workDir, bool noclose)
     pid = fork();
     if (pid < 0)
     {
-        cout << "second fork() in Daemonize::Init() failed" << endl;
+        cerr << "second fork() in Daemonize::Init() failed" << endl;
         return false;
     }
     else if (pid > 0)
@@ -60,7 +62,7 @@ bool Daemonize::Init(bool unique, const char *workDir, bool noclose)
     // 改变工作目录
     if (chdir(workDir) < 0)
     {
-        cout << "Change work directory failed" << endl;
+        cerr << "Change work directory failed" << endl;
         return false;
     }
     /* 关闭daemon从父进程继承来的所有打开的文件描述符,在此之前的标准输出都会打印到控制终端
@@ -81,5 +83,56 @@ bool Daemonize::Init(bool unique, const char *workDir, bool noclose)
         open("/dev/null", O_RDWR);
     }
     //到此处时日志文件也需重新打开
+
+    m_lPid = (long)getpid(); //获取守护进程的pid
+    //判断是否初始化为单实例的守护进程
+    if (unique)
+    {
+        if (IsRunning(lockFile))
+        {
+            cerr << "Daemon already running" << endl;
+            exit(1);
+        }
+    }
     return true;
+}
+
+int Daemonize::LockFile(int fd)
+{
+    struct flock fl;
+    fl.l_type = F_WRLCK;            //唯一写锁
+    fl.l_whence = SEEK_SET;         //偏移量设置为距文件开始处l_start字节
+    fl.l_start = 0;                 //偏移字节量
+    fl.l_len = 0;                   //锁范围为文件最大可能偏移量，即整个文件(无论追加多少数据)
+    return fcntl(fd, F_SETLK, &fl); //无阻塞设置锁
+}
+
+bool Daemonize::IsRunning(const char *lockFile)
+{
+    //注意此处为读写打开文件，但并没有O_TRUNC:截断文件长度为0，不能用标准I/O的fopen替代
+    int fd = open(lockFile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (fd < 0)
+    {
+        cerr << "can‘t open " << lockFile << " : " << strerror(errno) << endl;
+        exit(1);
+    }
+    if (LockFile(fd) < 0)
+    {
+        //如果文件已被加写锁，再次加写锁会返回-1，errno设置为EACCES或EAGAIN
+        if ((errno == EACCES) || (errno == EAGAIN))
+        {
+            close(fd);
+            return true;
+        }
+        //无法加锁，且不是因为已被加锁
+        cerr << "can't lock " << lockFile << " : " << strerror(errno) << endl;
+        exit(1);
+    }
+    //文件长度截断为0，防止新的pid比文件中原有pid短，导致原数字没能全部覆盖
+    ftruncate(fd, 0);
+    char buf[32];
+    sprintf(buf, "%ld", m_lPid);
+    write(fd, buf, strlen(buf));
+    //关闭文件描述符会使记录锁释放，所以程序结束之前都不应关闭fd
+    return false;
 }

@@ -10,7 +10,7 @@ typedef void SigHandle(int);
 
 void writeLog(const char *buf)
 {
-    int fd = open("./test.log", O_RDWR | O_CREAT | O_APPEND, RWRWRW);
+    int fd = open("test.log", O_RDWR | O_CREAT | O_APPEND, RWRWRW);
     write(fd, buf, strlen(buf)); //无缓存I/O
     close(fd);
 }
@@ -54,7 +54,7 @@ SigHandle *Signal(int signo, SigHandle *func)
 
 int main(int argc, char const *argv[])
 {
-    if (!Daemonize::Init(false, "/home/zero/www"))
+    if (!Daemonize::Init("prod.pid", "/home/zero/www"))
     {
         writeLog("Create daemon failed\n"); //此处需打开日志文件记录
         exit(1);
@@ -65,9 +65,10 @@ int main(int argc, char const *argv[])
     if (Signal(SIGHUP, sighup) == SIG_ERR)
         writeLog("Signal() SIGTERM fail\n");
     while (1)
-    {
-        writeLog("abcd");
-        sleep(1);
-    }
+        ;
+    // {
+    //     writeLog("abcd");
+    //     sleep(1);
+    // }
     return 0;
 }
