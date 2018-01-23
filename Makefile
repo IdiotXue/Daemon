@@ -72,10 +72,6 @@ $(OBJ_PATH)/%.o:$(SRC_PATH)/%.cpp
 $(TARGET): ${OBJS}
 	$(CC) $(CPPFLAGS) ${C11} -o $@ $^
 
-# 依赖关系，可以不写，不确定是否应写绝对路径
-main.o:  main.cpp Mutex.h
-Mutex.o: Mutex.cpp Mutex.h
-
 # 伪目标，没有依赖只有执行动作的目标
 .PHONY: clean
 clean:
