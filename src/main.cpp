@@ -4,15 +4,18 @@
 #include <fcntl.h>  //open
 #include <string.h> //strlen
 #include <signal.h>
+#include <stdio.h> //fputs
 
 #define RWRWRW (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
 typedef void SigHandle(int);
+int fd;
+FILE *fp;
 
 void writeLog(const char *buf)
 {
-    int fd = open("test.log", O_RDWR | O_CREAT | O_APPEND, RWRWRW);
-    write(fd, buf, strlen(buf)); //无缓存I/O
-    close(fd);
+    fputs(buf, fp); //带缓冲I/O
+    fflush(fp);    
+    // write(fd, buf, strlen(buf)); //无缓存I/O
 }
 
 void sighup(int signo) //SIGHUP信号处理函数
@@ -59,6 +62,8 @@ int main(int argc, char const *argv[])
         writeLog("Create daemon failed\n"); //此处需打开日志文件记录
         exit(1);
     }
+    // fd = open("test.log", O_RDWR | O_CREAT | O_APPEND, RWRWRW);
+    fp = fopen("test.log", "a+");
     writeLog("create daemon success\n");
     if (Signal(SIGTERM, sigterm) == SIG_ERR)
         writeLog("Signal() SIGTERM fail\n");
@@ -70,5 +75,7 @@ int main(int argc, char const *argv[])
     //     writeLog("abcd");
     //     sleep(1);
     // }
+    // close(fd);
+    fclose(fp);
     return 0;
 }
